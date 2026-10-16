@@ -8,6 +8,9 @@ Features:
     - Dynamic shape support for resolution independence
     - Automatic optimization
     - Metadata embedding
+    - Structured outputs (a dataclass such as ``ModelOutput``) flattened to a
+      tuple of tensors, and size-1 dynamic sample axes exported at size 2
+      (both in :mod:`src.deployment.export_adapters`)
 """
 
 from __future__ import annotations
@@ -21,6 +24,12 @@ import torch
 from torch import Tensor, nn
 
 from src.deployment.config import ExportConfig
+from src.deployment.export_adapters import (
+    TupleOutputWrapper,
+    enlarge_size_one_dynamic_axes,
+    is_structured_output,
+    structured_output_fields,
+)
 
 if TYPE_CHECKING:
     from src.modeling.model import AlphaGalerkinModel
@@ -94,13 +103,32 @@ class ONNXExporter:
             input_shapes=[tuple(t.shape) for t in input_tensors],
         )
 
+        # torch.export can pin a declared-dynamic axis whose sample size is 1
+        # (AlphaGalerkinModel's coordinate einsum does), so every export method
+        # traces a size-2 sample on such axes instead.
+        input_tensors, enlargements = enlarge_size_one_dynamic_axes(
+            input_tensors, self.config.input_names, self.config.dynamic_axes
+        )
+        for enlargement in enlargements:
+            self._logger.info(
+                "sample_axis_enlarged",
+                input_name=enlargement.input_name,
+                axis=enlargement.axis,
+                from_size=enlargement.from_size,
+                to_size=enlargement.to_size,
+            )
+
+        # Every export method receives the same module: the model itself, or
+        # TupleOutputWrapper when its output is a dataclass.
+        export_target = self._wrap_structured_output(model, input_tensors)
+
         # Select export method
         if self.config.export_method == "dynamo":
-            self._export_dynamo(model, input_tensors, output_path, **kwargs)
+            self._export_dynamo(export_target, input_tensors, output_path, **kwargs)
         elif self.config.export_method == "script":
-            self._export_script(model, input_tensors, output_path, **kwargs)
+            self._export_script(export_target, input_tensors, output_path, **kwargs)
         else:
-            self._export_trace(model, input_tensors, output_path, **kwargs)
+            self._export_trace(export_target, input_tensors, output_path, **kwargs)
 
         # Optimize if requested
         if self.config.optimization_level != "none":
@@ -116,6 +144,30 @@ class ONNXExporter:
         )
 
         return output_path
+
+    def _wrap_structured_output(
+        self,
+        model: nn.Module,
+        input_tensors: tuple[Tensor, ...],
+    ) -> nn.Module:
+        """Return ``model``, or :class:`TupleOutputWrapper` around it if it returns a dataclass.
+
+        One forward pass on the sample input decides. Any other output returns
+        ``model`` itself, so tensor- and tuple-returning models export exactly
+        as before. Raises ``TypeError`` for a non-tensor dataclass field.
+        """
+        with torch.no_grad():
+            sample_output = model(*input_tensors)
+        if not is_structured_output(sample_output):
+            return model
+
+        self._logger.info(
+            "model_output_flattened",
+            output_type=type(sample_output).__name__,
+            fields=[name for name, _ in structured_output_fields(sample_output)],
+            output_names=self.config.output_names,
+        )
+        return TupleOutputWrapper(model)
 
     def _export_trace(
         self,

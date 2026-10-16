@@ -143,8 +143,9 @@ ALLOWLIST_SRC: dict[str, tuple[int, str]] = {
 }
 
 #: ``tests`` modules over ``CEILING_TESTS``. 8 rows recorded 2026-09-11.
-#: ``tests/docs/test_e2e_visibility.py`` is itself a guard: each new clause
-#: there bumps its own recorded count, visibly, in the PR that adds the clause.
+#: ``tests/docs/test_e2e_visibility.py`` and ``tests/docs/test_fem_required_visibility.py``
+#: are themselves guards: each new clause or review bumps the recorded count, visibly, in the
+#: PR that adds it.
 ALLOWLIST_TESTS: dict[str, tuple[int, str]] = {
     "tests/pde/test_operators.py": (1717, "one suite per operator family"),
     "tests/pde/test_mesh_refinement.py": (1507, "mesh + game suite"),
@@ -157,7 +158,11 @@ ALLOWLIST_TESTS: dict[str, tuple[int, str]] = {
     "tests/training/test_trainer_coverage.py": (1377, "trainer coverage sweep"),
     "tests/poc/test_complexity_scenario.py": (1148, "scenario suite"),
     "tests/training/test_checkpoint.py": (1102, "checkpoint suite; follows plan 1.3"),
-    "tests/docs/test_e2e_visibility.py": (1074, "itself a guard; grows one clause at a time"),
+    "tests/docs/test_e2e_visibility.py": (1288, "itself a guard; grows one clause at a time"),
+    "tests/docs/test_fem_required_visibility.py": (
+        1045,
+        "itself a guard; grows one review at a time (crossed 1000 with Copilot review 4)",
+    ),
     "tests/research/test_baselines.py": (1069, "baseline suite incl. shared primitives"),
     "tests/training/test_trainer_physics.py": (1001, "physics trainer suite; one line over"),
 }

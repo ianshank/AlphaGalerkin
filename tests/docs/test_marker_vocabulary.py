@@ -46,6 +46,7 @@ from tests.support.marker_expr import (
     marker_expressions,
     marker_identifiers,
     parse_terms,
+    pytest_invocation,
 )
 from tests.support.workflows import (
     MAKE_RECIPE_PREFIXES,
@@ -55,6 +56,7 @@ from tests.support.workflows import (
     UnbalancedQuoteError,
     iter_commands,
     iter_run_scripts,
+    iter_shell_commands,
     makefile_commands,
     makefile_target_recipe,
     strip_recipe_prefixes,
@@ -273,6 +275,51 @@ class TestExpressionExtraction:
         assert marker_expressions("   ") == []
 
 
+#: ``(command, the paths pytest_invocation reads -- or None: not a pytest run)``. The ``None``
+#: rows are programs that merely *carry* ``-m pytest`` in their argv (Copilot review, PR #160:
+#: ``echo -m pytest tests/...`` was read as a test step, so a no-op could stand in for one).
+_ENTRY_POINT_CASES: tuple[tuple[str, tuple[str, ...] | None], ...] = (
+    ("echo -m pytest tests/a.py -m 'fem_required'", None),
+    ("printf '%s' -m pytest tests/a.py", None),
+    ("python script.py -m pytest tests/a.py", None),
+    ("python -c 'pass' -m pytest tests/a.py", None),
+    ("python - -m pytest tests/a.py", None),
+    ("python -m coverage run some/prog.py -m pytest tests/a.py", None),
+    ("python -m coverage run -m mypkg tests/a.py", None),
+    ("python -m coverage report --fail-under=85", None),
+    ("PYTEST ?= $(PYTHON) -m pytest", None),
+    ("python -m", None),
+    ("python -u -B", None),
+    ("A=1 B=2", None),
+    ("coverage run", None),
+    ("pytest tests/x.py", ("tests/x.py",)),
+    ("A=1 python -m pytest tests/x.py -m 'fem_required'", ("tests/x.py",)),
+    ("python3.11 -u -W error -X dev -m pytest tests/x.py", ("tests/x.py",)),
+    ("/usr/bin/python3 -mpytest tests/x.py", ("tests/x.py",)),
+    ("$(PYTHON) -m pytest tests/x.py", ("tests/x.py",)),
+    ("python -m coverage run --branch --include='*/a.py' -m pytest tests/x.py", ("tests/x.py",)),
+    ("python -m coverage run --rcfile .c -m pytest tests/x.py", ("tests/x.py",)),
+    ("coverage run --rcfile=.coveragerc.fem -m pytest tests/x.py", ("tests/x.py",)),
+    ("$(COV) run --branch --include=X -m pytest tests/x.py", ("tests/x.py",)),
+)
+
+
+class TestPytestEntryPoints:
+    """``-m pytest`` runs pytest only where an interpreter or ``coverage run`` puts it."""
+
+    @pytest.mark.parametrize(("command", "paths"), _ENTRY_POINT_CASES)
+    def test_only_a_real_entry_point_is_a_pytest_run(
+        self, command: str, paths: tuple[str, ...] | None
+    ) -> None:
+        invocation = pytest_invocation(command)
+        assert (invocation.paths if invocation else None) == paths
+
+    def test_both_outcomes_are_exercised(self) -> None:
+        """Vacuity: a table of only rejections passes against a parser that rejects everything."""
+        outcomes = {paths is None for _, paths in _ENTRY_POINT_CASES}
+        assert outcomes == {True, False}
+
+
 class TestTermParsing:
     """Unit-tests the expression grammar helpers on synthetic input."""
 
@@ -480,3 +527,31 @@ class TestShellCommentStripping:
         for run in iter_run_scripts():
             strip_shell_comments(run.script)
         assert makefile_commands(), "the Makefile parsed to no commands at all"
+
+
+class TestExitStatusPropagation:
+    """``iter_shell_commands`` keeps the operators ``tests/support/shell_status.py`` reads.
+
+    That model's rows, and the real-shell checks behind them, are in
+    ``tests/docs/test_shell_status.py``.
+    """
+
+    def test_operators_are_recorded_on_both_sides(self) -> None:
+        commands = iter_shell_commands("a || b && c | d; e\nf")
+        assert [(c.text, c.before, c.after) for c in commands] == [
+            ("a", "", "||"),
+            ("b", "||", "&&"),
+            ("c", "&&", "|"),
+            ("d", "|", ";"),
+            ("e", ";", "\n"),
+            ("f", "\n", ""),
+        ]
+
+    def test_quoted_operators_separate_nothing(self) -> None:
+        assert [c.text for c in iter_shell_commands("echo 'a || b'; c")] == ["echo 'a || b'", "c"]
+
+    def test_the_texts_are_iter_commands_on_every_live_script(self) -> None:
+        """One scanner, not two: the operators are added, the commands are unchanged."""
+        scripts = [run.script for run in iter_run_scripts()]
+        assert len(scripts) >= MIN_MARKER_EXPRESSIONS
+        assert all([c.text for c in iter_shell_commands(s)] == iter_commands(s) for s in scripts)

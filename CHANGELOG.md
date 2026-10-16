@@ -698,6 +698,161 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **A `fem_required` test that had never run in CI now runs, and the class is guarded.**
+  `TestSkfemTriMctsSmoke` (`tests/pde/games/test_substrate_refinement_game.py`, PR #148) was a counted
+  skip in the fast lane, which lacks scikit-fem, and `test-extras` -- the only job that installs
+  `[fem]` -- names its suites file by file and never named it. `test-extras` gains a step that
+  selects the module with `-m "fem_required and not gpu_required"` under
+  `ALPHAGALERKIN_REQUIRE_EXTRAS=1` (1 passed, 11 deselected; with scikit-fem hidden it exits 4
+  naming the install command). New guard `tests/docs/test_fem_required_visibility.py`: every module
+  that applies the marker, found by AST (never prose) with a `tokenize` cross-check for spellings the
+  scan cannot follow, must be selected -- path, ancestor or node id; not ignored, deselected or
+  `-k`-filtered; `-m` evaluated by pytest's own compiler -- by a fail-loud step of a hard-gate job
+  whose install names an extra `pyproject.toml` declares with scikit-fem. Shared helpers are
+  additive in `tests/support/{marker_expr,workflows}.py` (`tests/support` 91.9%, gate 85). 5/5 live
+  mutations killed. The ninth recorded instance of this repo's CI-invisibility defect.
+- **The `fem_required` visibility guard reads what runs, not just a step's metadata** (Copilot
+  review of PR #160). Three bypasses, each reproduced first and now killed by a named test. A
+  program merely carrying `-m pytest` (`echo -m pytest tests/...`) was parsed as a pytest run, so a
+  no-op could stand in for the selecting step; `-m pytest` now counts only after an interpreter's
+  own options or `coverage run`'s. `pytest ... || true` passed the fail-loud clause, which read the
+  step's env, `continue-on-error`, `if:` and gate but never where pytest's status went; the shared
+  scanner now keeps the operators around each command (`iter_shell_commands`, the same texts as
+  `iter_commands`) and `exit_status_obstacles` models GitHub's shells -- `|| true`, a pipe without
+  `pipefail`, `set +e`, `&`, an earlier `exit 0` and an enclosing `if` are not loud, while `; true`
+  under the default `bash -e` is. And a module-level `pytest.importorskip("skfem")` yields zero
+  items, so neither the root hook nor `ALPHAGALERKIN_REQUIRE_EXTRAS` ever sees the fem tests; new
+  clause (g) bans `importorskip` in fem modules, import-time `skip(allow_module_level=True)` and
+  skip marks on fem tests. Six more live mutations killed (11/11), with the `; true` control green.
+- **The `fem_required` guard reads the root `conftest.py`, and `exec` and early ends inside a
+  compound** (second Copilot review of PR #160). Two bypasses, each reproduced on `4c20d2a` (the
+  guard passed) and now killed by a named test. Clause (f) stopped one directory short of the
+  repository root, so `collect_ignore`, `pytest_ignore_collect` or an item-removing hook added to
+  the root `conftest.py` hid a fem module from every step (65 passed with both planted). The root
+  file is now read like any other conftest; its one collection hook is allowed by name because the
+  new `tests/docs/test_root_conftest_hooks.py` drives it for both optional extras in all four
+  branches (extra installed or not, `ALPHAGALERKIN_REQUIRE_EXTRAS` set or not) and fails it if it
+  removes, adds, reorders or deselects an item, marks a test whose extra is installed, or lets a
+  missing extra go quietly green. The filter list gains the hooks that drop or replace what is
+  collected, and `pytest_plugins`. And `exit_status_obstacles` treated only `exit`/`return` as
+  ending the script before pytest: an `exec` naming a command (`exec true`) now does and a
+  redirect-only `exec 2>&1` does not, and an early end counts inside a compound too (`if ...;
+  then exit 0; fi`), where the model had ignored it; there a `set` can only switch an option off.
+  The shell model moves to `tests/support/shell_status.py` and the conftest helpers to
+  `tests/support/collection_hooks.py` (both 99% branch), keeping `workflows.py` (852 lines) and
+  the guard (959) under the 1000-line budget. Three more live mutations killed (14/14) plus the
+  `exec 2>&1` control; every new check weakened in place was caught (8/8).
+- **The E2E visibility guard checks that each `test-e2e` step can fail** (hygiene B46). The
+  guard proved the `test-e2e` *job* is a hard gate but never that its *steps* can fail it:
+  `|| true` after either pytest command, `set +e` before it, or `continue-on-error: true` on
+  either step masked every E2E failure while `tests/docs/test_e2e_visibility.py` stayed fully
+  green (71 passed with each planted, re-verified 2026-10-14). New clause (j) holds every step
+  running the tier to the question the `fem_required` guard asks, now one shared function
+  (`tests/support/shell_status.py::step_failure_obstacles`: `continue-on-error` at the step or
+  job, a skippable `if:`, and the exit-status model); `; true` under the default `bash -e` and an
+  untouched round trip stay green as controls. Adding the tenth clause showed the clause-count
+  check was vacuous at ten -- a substring test, and "written" contains "ten" -- so it now matches
+  the spelled number as a whole word bound to "clauses". All defects killed by named tests, live
+  and re-planted on copies; the helper weakened three ways was caught each time.
+- **Both visibility guards close four more bypasses, and the shell model is checked against the
+  real shell** (third Copilot review of PR #160). Each was reproduced first, passed the guards at
+  `5a5e89e`, and now fails a named test. The E2E guard counted `echo pytest tests/e2e/ ...` as
+  running the tier, and as fail-loud; its selection helpers now read every command through
+  `pytest_invocation`, as the `fem_required` guard does, so only a real entry point and a path
+  pytest collects count (`--ignore tests/e2e/` with a space no longer reads as a selection). A
+  `set -e` behind `&&`/`||` or in a pipeline counted as re-enabling errexit, and a `trap 'exit 0'`
+  on `ERR` or `EXIT` passed while it replaced pytest's status: with a stub `pytest` exiting 7,
+  `bash -e` exits 0 for all four. `exit_status_obstacles` now lets a `set` or `shopt -o` switch an
+  option back on only where it surely runs in this shell, and reports a trap that installs an
+  action -- and the neighbours, each reproduced the same way: `eval`, `source`/`.`, `builtin`/
+  `command set +e`, a function head in `function f` or `f ()` form, and a function, alias or
+  `hash -p` entry named like the command; resolution through `PATH` stays out of scope. The conftest scan read only `=` bindings, so `from helpers import
+  collect_ignore` or `... import hide as pytest_ignore_collect` hid a module unseen; it now reads
+  every binding (imports with their aliases, tuple unpacking, `for`/`with`/`:=` targets, `except
+  ... as`) and reports a star import and a run-time binder (`globals()`, `exec`, `setattr`). The
+  status rows move to the new `tests/docs/test_shell_status.py`, which also runs every row in
+  the shell GitHub would: wherever the model finds no obstacle the script must exit non-zero, and
+  every masked row must exit 0 or say why the model over-reports. 13 new checks weakened in place,
+  each caught; six live plants on the fem guard and three on the E2E guard killed, with an
+  unconditional `set -e` as the control.
+- **The real model exports to ONNX, and the ONNX step can fail the build** (hygiene B45).
+  `test-extras`' ONNX step ran under `continue-on-error` and logged 24 failed, 12 passed on every
+  run while the job reported green. Three defects, each hidden by the one before it and each
+  reproduced on the old code by a named test first: `ModelOutput` is a frozen dataclass, not a
+  pytree, so `torch.export` and `torch.jit.trace` both rejected the real model's output; a
+  declared-dynamic batch axis seen at size 1 was pinned to 1 in the exported graph (0/1
+  specialisation, triggered by the coordinate `einsum`); and onnxruntime's dynamic quantizer
+  rejected the shapes the exporter recorded in `graph.value_info`, even for a plain MLP. New
+  `src/deployment/export_adapters.py` flattens a dataclass output to a tuple only when the model
+  returns one (`TupleOutputWrapper`; `ModelValidator` flattens through the same helper) and traces
+  a size-2 sample on exactly the size-1 axes declared dynamic (logged as `sample_axis_enlarged`);
+  `ModelQuantizer` hands onnxruntime the model with `value_info` dropped (`value_info_stripped`),
+  leaving the input file untouched. Tensor- and tuple-returning models reach the exporter as the same
+  object with the same call as before. The step's `continue-on-error` is gone, its comment names the
+  real causes rather than the dynamo default, and an import check fails it when the ONNX stack is
+  missing instead of letting every test skip. 41/41 pass (onnx 1.23.2, onnxruntime 1.31.0,
+  onnxscript 0.7.2); `src/deployment` branch coverage 27.91% -> 51.04% in CI's form. Three findings
+  are recorded as B47-B49, among them that the legacy `dynamo=False` exporter -- the fix the old
+  comment proposed -- produces outputs off by about 0.1.
+- **The `fem_required` guard reviews every conftest hook, and reads the annotations that run at
+  import** (fourth Copilot review of PR #160). Two more gaps, each reproduced with real pytest and
+  passing the guard at `5cc1af8`: a conftest `pytest_collection_finish` that emptied
+  `session.items` left a failing fem test unrun ("1 passed"), and `def test_x() ->
+  pytest.skip(..., allow_module_level=True)` skipped its module before collection ("1 skipped");
+  under `from __future__ import annotations` the same test ran and failed, the control. The list of
+  hooks that can hide a test had grown with each review, so clause (f) now reports every hook a
+  conftest on a fem module's path defines unless `REVIEWED_HOOKS` admits it, each admission with
+  its review and failing as stale once no conftest needs it; the live tree needs one,
+  `pytest_terminal_summary`. The import-time scan reads eager annotations, leaves postponed ones
+  out, and reads function bodies too, since it does not follow calls: a helper called at import
+  was the same gap one level down. New `tests/docs/test_collection_hooks.py` pins both scans
+  (32 tests); 9/9 weakened checks caught, and three live plants killed with a postponed-annotation
+  control. The guard crossed the 1000-line test budget and is recorded there, like the E2E guard.
+- **Front-door performance figures must be recorded measurements, not merely hardware-tagged
+  citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
+  is backed only when it equals, at its written precision and to at least two significant
+  digits, a *named* timing measurement (sidecar `metrics` or arm `counters`, or a
+  `config/baselines/` entry) of a run cited in the same block whose provenance records a real
+  `hardware_tag`. Before, any tagged artifact backed any figure: "12 ms per move" citing
+  `results/lshape_adaptive_vs_uniform.csv`, and the removed RTX 3090 table with one cell citing the
+  arena CSV, both passed; both are pinned verbatim. Raw CSV rows are not evidence (12% to 46% of
+  2-digit durations matched one by chance; named measurements match at most 3%, bounded at 10% by a
+  test). The scanner catches the 14 phrasings the review found it missed ("Runtime (s)" headers,
+  "speeds up ... by 10x", "10-fold", "games per minute", "900 Hz", "reduces latency by
+  80%", ...) and no longer flags settings (timeout, time limit, cap, tolerance). Four mutation
+  kills that depended on committed files -- one had died when its sidecar was re-recorded -- are
+  re-planted on synthetic repositories; 32/32 planted defects killed. README's Performance section
+  now says neither measuring command writes a run sidecar, so neither can back a published figure.
+- **A performance-claims allowlist entry exempts only the figure inside its fragment** (Copilot
+  review of PR #160). `_allowlisted` (`tests/docs/test_performance_claims.py`) matched a fragment
+  anywhere on a line, so every unbacked figure on that line was exempt, and the stale check stayed
+  green while any figure sat there: a second, unreviewed figure appended to or written before an
+  allowlisted line was reported by nothing (reproduced; an empty fragment exempted a whole page).
+  The scanner now records each figure's column (`PerformanceNumber.column`, additive, outside
+  equality), an entry exempts a figure only when its whole token lies inside one occurrence of the
+  fragment, and staleness is judged per entry. 13/13 further planted defects killed (33-45), 291
+  tests across the two suites, `perf_claims.py` at 100% branch; both live entries stay exempt.
+- **A performance figure keeps its sign, and a table needs no outer pipes** (second Copilot
+  review of PR #160). Two scanner bypasses in `tests/support/perf_claims.py`, each reproduced
+  first and now killed by named tests. The number token dropped a leading sign, so a `-20` cell
+  under `Latency reduction (%)` read as `20` and a recorded `+20` backed it; a sign written
+  directly before the digits (`-`, `+`, U+2212) is now part of the value and none of its
+  precision (`-5%` states one significant digit), while a hyphen after a digit, letter or dot
+  (`10-20 ms`, `RTX-3090`, a date) or a list marker's `- ` stays unsigned. And `split_blocks`
+  opened a table only on a line starting with `|`, so the GFM form `Model | Latency (ms)` /
+  `--- | ---` / `FNet | 12` was read as prose and its bare `12` was invisible; a table now opens
+  on its delimiter row (one hyphen or more per cell, as many cells as a piped header line, which
+  moves into the table) and runs on over piped rows. A pipe-less line still ends a table -- GFM
+  reads it as a row -- disclosed in the module's limits. 25 more planted defects killed (46-70,
+  plus 45 re-planted), 332 tests across the two suites, `perf_claims.py` at 100% branch; the old
+  and new scanner read all 223 Markdown files in the repo identically, so no live page changes.
+- **An order-dependent arena pre-flight test kept the fast lane red.**
+  `TestPreflight::test_refuses_an_unhashed_config` patched the arena config class bound at
+  import, but `tests/poc/test_cli_commands.py` purges `sys.modules['src.poc.scenarios*']` and
+  `main()` builds its config through `load_config_from_dict`'s call-time import -- a new class,
+  so the patch never fired in CI's full run (it passed alone). The test now resolves the class
+  the way `main` does (`tests/poc/conftest.py`, rule 1); run after the purging module it fails
+  with the old patch and passes with the fix.
 - **Multi-corner operator review findings; the adaptive-vs-uniform sidecar re-recorded.**
   A corner declared twice within `CORNER_POSITION_ATOL` (such as (0, 0) and (5e-13, 0)) doubled
   its singular term; duplicates are now detected on the matched geometric corner. The polyomino

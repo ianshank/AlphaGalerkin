@@ -28,13 +28,22 @@ killer is ``gpu_required`` / ``fem_required``):
    ``TestReadBack::test_the_post_setup_config_hash_is_not_compared``.
 
 5/5 planted defects killed; the test count is larger and is not the number claimed.
+
+Order dependence (fixed 2026-10-08): ``test_refuses_an_unhashed_config`` passed alone and
+failed in CI's full run, because ``tests/poc/test_cli_commands.py`` purges
+``sys.modules['src.poc.scenarios*']`` and ``main`` builds its config through
+``load_config_from_dict``'s call-time import -- a *new* class, so a patch on the class bound
+at this module's import never fired (``tests/poc/conftest.py``, rule 1). Reproduce the old
+failure by running ``tests/poc/test_cli_commands.py`` first, then this module, in one
+pytest invocation.
 """
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -92,6 +101,19 @@ def _write_config(tmp_path: Path) -> Path:
     return path
 
 
+def _config_class_main_builds() -> type[MCTSClassicalAMRArenaConfig]:
+    """The config class ``main`` will instantiate, resolved now, not at import.
+
+    ``main`` builds its config through ``load_config_from_dict``, whose import runs at
+    call time against the current ``sys.modules``; after another test purges the
+    scenario modules, that is a different class object from the one this module bound
+    at import (``tests/poc/conftest.py``, rule 1). Resolving it here the same way makes
+    a patch land on the class ``main`` actually builds.
+    """
+    module = importlib.import_module(MCTSClassicalAMRArenaConfig.__module__)
+    return cast("type[MCTSClassicalAMRArenaConfig]", module.MCTSClassicalAMRArenaConfig)
+
+
 def _probe_returning(monkeypatch: pytest.MonkeyPatch, *states: GitProvenance) -> list[int]:
     """Make every git probe return ``states`` in turn (the last one repeats).
 
@@ -145,7 +167,7 @@ class TestPreflight:
     ) -> None:
         _probe_returning(monkeypatch, _CLEAN)
         _forbid_the_run(monkeypatch)
-        monkeypatch.setattr(MCTSClassicalAMRArenaConfig, "compute_hash", lambda self: UNKNOWN)
+        monkeypatch.setattr(_config_class_main_builds(), "compute_hash", lambda self: UNKNOWN)
         code = main(["--config", str(_write_config(tmp_path)), "--proposal-grade"])
         assert code == EXIT_NOT_PROPOSAL_GRADE
         assert f"config_hash={UNKNOWN!r}" in capsys.readouterr().err

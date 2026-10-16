@@ -3,6 +3,15 @@
 Covers actual export, dynamic shapes, output validation, and quantization.
 Tests requiring onnxruntime or onnx packages are automatically skipped when
 those packages are not installed.
+
+``_export_to`` silences every warning, so ``TestDefaultExportOfTheRealModel``
+exports on its own: it fails if the export takes torch's deprecated
+``dynamic_axes`` route (hygiene B50), and checks outputs at shapes other than
+the traced one. Planted defects it kills: ``dynamic_axes`` passed again
+(``test_export_takes_no_deprecated_dynamic_axes_route``); every input passed
+as static (``test_outputs_match_pytorch_at_untraced_shapes``, all three
+shapes); the size-1 enlargement removed (the same test, ``[3-9]`` and
+``[2-13]``).
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from src.deployment.config import (
 )
 from src.deployment.export_onnx import ONNXExporter, export_model
 from src.modeling.model import AlphaGalerkinModel
+from tests.support.onnx_export import deprecated_dynamic_axes_warnings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -367,6 +377,58 @@ class TestONNXDynamicShapes:
         assert dim_w.dim_param == "", "Width should be static (not symbolic)"
         assert dim_h.dim_value == board
         assert dim_w.dim_value == board
+
+
+# Tolerance the validation group below compares ONNX and PyTorch outputs with.
+PARITY_ATOL = 1e-4
+
+# (batch, board side) inputs the default export must reproduce PyTorch on. The
+# sample is batch 1 on a 9x9 board, which the exporter traces at batch 2, so
+# none of these is the traced shape.
+UNTRACED_SHAPES = ((1, 9), (3, 9), (2, 13))
+
+
+@pytest.fixture(scope="module")
+def default_export(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[AlphaGalerkinModel, Path, list[str]]:
+    """The tiny model exported once with the default config, and its deprecated-route warnings."""
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
+    model = _make_model()
+    path = tmp_path_factory.mktemp("default_export") / "model.onnx"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ONNXExporter(ExportConfig(optimization_level="none")).export(model, _sample_input(), path)
+    return model, path, deprecated_dynamic_axes_warnings(caught)
+
+
+class TestDefaultExportOfTheRealModel:
+    """The default config's dynamic axes reach torch as ``dynamic_shapes`` (hygiene B50)."""
+
+    def test_export_takes_no_deprecated_dynamic_axes_route(
+        self, default_export: tuple[AlphaGalerkinModel, Path, list[str]]
+    ) -> None:
+        _, _, flagged = default_export
+        assert flagged == []
+
+    @pytest.mark.parametrize(("batch", "board"), UNTRACED_SHAPES)
+    def test_outputs_match_pytorch_at_untraced_shapes(
+        self,
+        batch: int,
+        board: int,
+        default_export: tuple[AlphaGalerkinModel, Path, list[str]],
+    ) -> None:
+        ort = pytest.importorskip("onnxruntime")
+        model, path, _ = default_export
+        sample = _sample_input(batch=batch, board=board)
+
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        policy, value = session.run(None, {session.get_inputs()[0].name: sample.numpy()})
+        with torch.no_grad():
+            expected = model(sample)
+        np.testing.assert_allclose(policy, expected.policy_logits.numpy(), atol=PARITY_ATOL)
+        np.testing.assert_allclose(value, expected.value.numpy(), atol=PARITY_ATOL)
 
 
 # ---------------------------------------------------------------------------

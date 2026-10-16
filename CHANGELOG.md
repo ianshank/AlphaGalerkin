@@ -794,6 +794,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   onnxscript 0.7.2); `src/deployment` branch coverage 27.91% -> 51.04% in CI's form. Three findings
   are recorded as B47-B49, among them that the legacy `dynamo=False` exporter -- the fix the old
   comment proposed -- produces outputs off by about 0.1.
+- **ONNX export no longer takes torch's deprecated `dynamic_axes` route** (hygiene B50). On torch
+  >= 2.9 `torch.onnx.export` runs the dynamo exporter, which converted the `dynamic_axes` the
+  exporter passed through `from_dynamic_axes_to_dynamic_shapes`, a function deprecated for removal.
+  Every export in CI's ONNX step warned about it, and the removal would have turned that blocking
+  step red on a torch upgrade. `ONNXExporter` now derives `dynamic_shapes` from the unchanged
+  `ExportConfig.dynamic_axes` (new `dynamic_shapes_from_axes` in `src/deployment/export_adapters.py`:
+  one spec per input by position, output axes left to torch, an entry naming neither an input nor an
+  output rejected with a `ValueError` that names it) and passes it with `dynamo=True` explicit, so
+  torch 2.6-2.8 no longer falls back to the legacy exporter that mis-exports the model (B48). The
+  exported graph declares the same named axes. Neither warning is silenced: three new tests fail if
+  either is emitted (each failed on the old code), and a premise test fails if torch rewords them.
+  New parity checks run away from the traced shape (the real model at batch 3 and on a 13x13 board).
+  The size-1 axis enlargement is still needed and stays. 9/9 planted defects killed; the ONNX step
+  runs 51 tests (41 before). `export_method="script"` still passes `dynamic_axes` (B47).
 - **The `fem_required` guard reviews every conftest hook, and reads the annotations that run at
   import** (fourth Copilot review of PR #160). Two more gaps, each reproduced with real pytest and
   passing the guard at `5cc1af8`: a conftest `pytest_collection_finish` that emptied

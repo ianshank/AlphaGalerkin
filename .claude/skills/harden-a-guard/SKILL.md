@@ -73,6 +73,58 @@ pytest path/to/test_guard.py -q -p no:randomly | tail -2   # green again
 
 Record the test *name*, not the count.
 
+### Steps 2-4 for many defects at once: `scripts/plant_mutations.py`
+
+Hand-planting is fine for one defect. For a guard with several (B50 planted nine),
+write them as a spec and let `scripts/plant_mutations.py` do the ritual. It is tested
+itself (`tests/scripts/test_plant_mutations.py`, 11/11 planted defects killed):
+
+```python
+# $TMPDIR/mutations.py -- outside the repo, it is scaffolding
+SEL = ["tests/deployment/test_export_adapters.py::TestExportDispatch"]
+MUTATIONS = [
+    {
+        "label": "N1 multi-input spec left flat",
+        "path": "src/deployment/export_onnx.py",
+        "old": "            shapes = TupleOutputWrapper.dynamic_shapes_for(shapes)\n",
+        "new": "            pass\n",  # keep the block's body: removing the line is a syntax error
+        "select": SEL,
+        "expect": "AssertionError",  # optional: a kill for any other reason is WRONG-REASON
+    },
+]
+```
+
+```bash
+python -m scripts.plant_mutations "$TMPDIR/mutations.py"
+```
+
+Per mutation it:
+- asserts the anchor occurs **exactly once**, else reports `ANCHOR` and doesn't run it;
+- runs each `select` **unmutated first**, so a test that was already red is never
+  counted as a kill (`BASELINE-RED` is printed instead);
+- writes bytes, so Windows line endings cannot flip the file;
+- runs under CI's `-m "not gpu_required and not fem_required"` (Step 4), with a
+  per-run `--timeout`;
+- restores the file and re-reads it to prove the restore.
+
+It journals the original to `<repo>/.plant-journal.json` (gitignored) first. The
+next run restores a file a hard-killed run left mutated, but only if it still holds
+exactly the mutated bytes; it refuses rather than overwrite work done since. A stopped
+job once left `quantize.py` mutated; you don't want to find that in a commit.
+
+The verdict is `KILLED` with each newly `FAILED` node id, `SURVIVED`, `TIMEOUT`,
+`BROKEN` when the run only `ERROR`ed, or `WRONG-REASON`. An ImportError that takes a
+module down names no test, so it is not a kill. Every verdict prints the run's first
+`E` line as its `reason`, so **read it**: a test that failed because a dependency
+raised did not catch the defect. B52's first two plants (4-bit weights, corrupted
+float initializers) made onnxruntime refuse the model and looked like kills. Set
+`expect` to make that check mechanical: a kill whose reason doesn't match it is
+`WRONG-REASON`. It exits
+non-zero unless at least one mutation ran and every one was killed, so an `--only`
+typo cannot pass. Add plugins or flags with a repeated `--pytest-arg`.
+Keep the spec out of the repo, but copy each label and its killers into the docstring
+(Step 7).
+
 ## Step 4 — Check the killing test's markers
 
 A killer carrying `gpu_required` or `fem_required` **skips on CI**, so the kill is

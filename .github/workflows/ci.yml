@@ -136,7 +136,8 @@ jobs:
       #   git ls-files '*.py' | grep -vE '^(src/|tests/|dashboard/|scripts/|config/)' \
       #     | grep -vE '^(conftest|deploy_space)\.py$' \
       #     | grep -vE '^(hf_space|notebooks|claude-code-platform)/'
-      # (must print nothing). Without parity, code can be CI-green and still be
+      # (must print nothing; tests/docs/test_ruff_scope_parity.py runs this as a
+      # guard, with the Makefile `lint` mirror). Without parity, code can be CI-green and still be
       # rewritten or rejected by a contributor's commit hook. The three excluded
       # trees are the HF deploy bundle (pinned to an older ruff/gradio, an
       # accepted charter deviation), notebook helpers, and vendored platform code.
@@ -416,9 +417,10 @@ jobs:
           python -c "import sys; print('Python', sys.version)"
           pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
 
-      # The .claude/ harness -- 9 skills, 5 subagents, 4 slash commands, a
-      # SessionStart hook and settings.json -- is executable configuration with
-      # no tests until now. A skill citing a deleted path, an agent declaring a
+      # The .claude/ harness -- its skills, subagents, slash commands, hooks and
+      # settings.json (counted in CLAUDE.md's Agentic-harness row, which a test
+      # checks against disk) -- is executable configuration that once had
+      # no tests. A skill citing a deleted path, an agent declaring a
       # tool that does not exist, or a permission naming a renamed module all
       # fail at the moment someone relies on them. Hermetic and deterministic:
       # no network, no model calls, ~0.25s.

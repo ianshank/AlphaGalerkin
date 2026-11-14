@@ -263,3 +263,7 @@ config/board.py
 
 # MkDocs build output
 /site/
+
+# scripts/plant_mutations.py journals a file's original bytes here while it is mutated;
+# present only if a run was killed, and restored by the next run.
+.plant-journal.json

@@ -154,7 +154,14 @@ Multi-node DDP training with NCCL gradient sync.
 
 Model export and edge deployment.
 
-- **`export_onnx.py`** — `ONNXExporter` with dynamic shape support.
+- **`export_onnx.py`** — `ONNXExporter` with dynamic shape support. Where torch defaults to the
+  dynamo exporter (`ONNX_EXPORT_DEFAULTS_TO_DYNAMO`, torch 2.9+) the axes go out as
+  `dynamic_shapes`; older torch keeps the legacy `dynamic_axes` call. Each export logs its
+  route as `export_axes_route` (hygiene B50).
+- **`export_adapters.py`** — the adapters between a model's Python inputs and outputs and the
+  ONNX graph's: `TupleOutputWrapper` / `flatten_model_output` (dataclass outputs, B45),
+  `enlarge_size_one_dynamic_axes` (0/1 specialisation, B45), `dynamic_shapes_from_axes` and
+  `select_axes_route` (B50).
 - **`quantize.py`** — `ModelQuantizer` (dynamic/static INT8).
 - **`runtime.py`** — ONNX Runtime inference wrapper with multi-provider support.
 - **`validate.py`** — `ModelValidator` against PyTorch outputs.

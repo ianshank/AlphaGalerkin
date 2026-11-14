@@ -13,6 +13,7 @@
 #   make test-cert     # certificate module tests + 85% gate
 #   make test-stoch    # stochastic module tests + 85% gate
 #   make test-substrate # refinement-substrate surface + 95% gate (needs [fem])
+#   make test-onnx     # CI's blocking ONNX export/validate step (needs the ONNX stack)
 #   make test-all      # full test suite (fast + slow)
 #   make coverage      # global coverage with 85% gate
 #   make gitleaks      # secret scan
@@ -27,7 +28,7 @@
         gitleaks pre-commit docs-serve clean check gpu-smoke \
         demo pre-pr test-agents test-benchmarks test-core test-e2e \
         test-regression test-sanity test-security test-demos test-claude \
-        test-substrate test-eval-harness docker-build docker-test artifact-manifest
+        test-substrate test-eval-harness test-onnx docker-build docker-test artifact-manifest
 
 # ---------------------------------------------------------------------------
 # Tool resolution
@@ -257,6 +258,19 @@ test-substrate:
 		--cov=src/research/substrates \
 		--cov-config=.coveragerc.substrates \
 		--cov-branch --cov-fail-under=$(SUBSTRATE_COV_THRESHOLD) -q --no-header
+
+# Mirrors ci.yml's test-extras "Run ONNX export/validate suites" step (B45, B50;
+# B54 (c)), guarded by tests/docs/test_onnx_step_mirror.py. REQUIRES the ONNX
+# stack (onnx, onnxruntime, onnxscript), so like `test-substrate` it is NOT
+# chained into `pre-pr`. The import check runs first and fails loud: without it
+# a missing stack turns every test into a skip and the target passes on nothing.
+ONNX_SUITES := tests/deployment/test_export_onnx_integration.py \
+    tests/deployment/test_onnx_runtime_regressions.py \
+    tests/integration/test_onnx_e2e.py
+
+test-onnx:
+	$(PYTHON) -c "import onnx, onnxruntime, onnxscript"
+	$(PYTEST) $(ONNX_SUITES) --tb=short -q
 
 # Mirrors ci.yml's test-extras "Coverage gate (src/integrations/eval_harness)"
 # step (R-13). REQUIRES the optional [eval-harness] git extra, so like

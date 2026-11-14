@@ -81,6 +81,37 @@ pytest ... > /tmp/out.txt 2>&1; echo "exit=$?"; grep -E "passed|failed|error" /t
 Note: the full suite in one process can exhaust memory in constrained environments (SIGKILL,
 exit 137) — that is an environment limit, not a test failure. Chunk by directory and say so.
 
+## Step 6b — A failure in code you did not touch: prove it predates you
+
+"Unrelated, pre-existing" is a claim. Prove it by running the **same** selection on a
+clean worktree of the base. Don't stash: it misses untracked files and puts your tree at
+risk.
+
+```bash
+git worktree add --detach "$TMPDIR/base_wt" origin/<base-branch>
+(cd "$TMPDIR/base_wt" && pytest <the failing files> -q -p no:cacheprovider) > "$TMPDIR/base.txt" 2>&1
+grep -E "^(FAILED|ERROR)" "$TMPDIR/base.txt" | sed -E 's/::.*//' | sort | uniq -c
+git worktree remove --force "$TMPDIR/base_wt"
+```
+
+Compare the per-file counts with your run. Report "pre-existing" only for an identical
+set. B50's 44 local `tests/docs/` failures (Windows shell semantics, a ruff-version pin)
+matched the base exactly, and the report says so with the numbers. Inside OneDrive, set
+`PYTHONPYCACHEPREFIX` outside the worktree too, or collection stalls.
+
+## Step 6c — Mirrored files
+
+`hf_space/src/**` mirrors parts of `src/` byte for byte. If you changed a mirrored file,
+copy it and prove both the identity and the ratchet:
+
+```bash
+cmp src/<pkg>/<file>.py hf_space/src/<pkg>/<file>.py
+python -m scripts.measure_shape check     # mirror_diverged_files must not grow
+```
+
+Edit with tools that keep LF: on Windows, Python's `Path.write_text` writes CRLF, which
+breaks byte-identity.
+
 ## Step 7 — Report
 
 State what you ran, what passed, and what you did not run. Never report a suite as green that you

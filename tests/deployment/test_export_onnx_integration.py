@@ -12,6 +12,15 @@ the traced one. Planted defects it kills: ``dynamic_axes`` passed again
 as static (``test_outputs_match_pytorch_at_untraced_shapes``, all three
 shapes); the size-1 enlargement removed (the same test, ``[3-9]`` and
 ``[2-13]``).
+
+B52 (the quantization accuracy metric), planted with
+``python -m scripts.plant_mutations``: the quantized model's int8 weights
+doubled, so it loads and runs (``TestONNXWithQuantization::test_quantized
+_model_policy_accuracy_within_tolerance``, on the assertion: error 3.33 of the
+logits' scale), and ``_make_model``'s seed removed (``test_make_model_weights
+_do_not_depend_on_test_order``). The real model's axis names
+(``test_graph_names_the_configured_axes``) are checked against
+``ExportConfig().dynamic_axes`` itself, inputs and outputs alike.
 """
 
 from __future__ import annotations
@@ -37,6 +46,13 @@ from tests.support.onnx_export import deprecated_dynamic_axes_warnings
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+# Seed for every model's weights, so each test's model is independent of test order.
+MODEL_SEED = 0
+
+# Quantized policy logits must stay within this fraction of the original logits' scale.
+QUANTIZED_POLICY_REL_TOL = 0.10
 
 
 def _tiny_op_config(**overrides: Any) -> OperatorConfig:
@@ -66,7 +82,12 @@ def _tiny_op_config(**overrides: Any) -> OperatorConfig:
 
 
 def _make_model(**config_overrides: Any) -> AlphaGalerkinModel:
-    """Instantiate a tiny AlphaGalerkinModel for testing.
+    """Instantiate a tiny AlphaGalerkinModel for testing, with seeded weights.
+
+    Seeded so that a model's weights do not depend on how much of the global
+    RNG ran before it. ``tests/conftest.py`` reseeds torch before every
+    function-scoped test, but not before a module-scoped fixture such as
+    ``default_export`` (B52).
 
     Args:
         **config_overrides: OperatorConfig overrides.
@@ -76,6 +97,7 @@ def _make_model(**config_overrides: Any) -> AlphaGalerkinModel:
 
     """
     cfg = _tiny_op_config(**config_overrides)
+    torch.manual_seed(MODEL_SEED)
     model = AlphaGalerkinModel(cfg)
     model.eval()
     return model
@@ -130,6 +152,15 @@ def _export_to(
 # ---------------------------------------------------------------------------
 # Group 1 – ExportConfig dynamic axes
 # ---------------------------------------------------------------------------
+
+
+def test_make_model_weights_do_not_depend_on_test_order() -> None:
+    """Without the seed in ``_make_model``, consumed global RNG moves the weights (B52)."""
+    first = _make_model()
+    torch.rand(1000)  # what an earlier test might have consumed
+    second = _make_model()
+    for (name, a), (_, b) in zip(first.state_dict().items(), second.state_dict().items()):
+        torch.testing.assert_close(a, b, msg=f"{name} differs between two _make_model() calls")
 
 
 class TestONNXExporterConfig:
@@ -412,6 +443,20 @@ class TestDefaultExportOfTheRealModel:
         _, _, flagged = default_export
         assert flagged == []
 
+    def test_graph_names_the_configured_axes(
+        self, default_export: tuple[AlphaGalerkinModel, Path, list[str]]
+    ) -> None:
+        """The names in ``ExportConfig.dynamic_axes`` reach the graph, inputs and outputs alike."""
+        onnx = pytest.importorskip("onnx")
+        _, path, _ = default_export
+        graph = onnx.load(str(path)).graph
+        axes = ExportConfig().dynamic_axes
+        tensors = {t.name: t for t in (*graph.input, *graph.output)}
+        assert set(axes) <= set(tensors), f"graph lacks {set(axes) - set(tensors)}"
+        for name, named_axes in axes.items():
+            dims = tensors[name].type.tensor_type.shape.dim
+            assert {axis: dims[axis].dim_param for axis in named_axes} == named_axes, name
+
     @pytest.mark.parametrize(("batch", "board"), UNTRACED_SHAPES)
     def test_outputs_match_pytorch_at_untraced_shapes(
         self,
@@ -601,7 +646,14 @@ class TestONNXWithQuantization:
         )
 
     def test_quantized_model_policy_accuracy_within_tolerance(self, tmp_path: Path) -> None:
-        """Quantized model policy outputs are within 10 % of original ONNX outputs."""
+        """Quantized policy logits stay within 10 % of the original logits' scale.
+
+        Error is measured against the logits' mean magnitude, not element by
+        element: logits cross zero, so a per-element relative error divides by
+        whichever logit lands nearest it. That metric ranged 0.005-0.073 across
+        eight model seeds alone and hit 0.18 on CI's onnxruntime 1.31 (B52),
+        while this one stayed within 0.005-0.024.
+        """
         ort = pytest.importorskip("onnxruntime")
         pytest.importorskip("onnx")
         from src.deployment.quantize import ModelQuantizer
@@ -623,10 +675,12 @@ class TestONNXWithQuantization:
         q_session = ort.InferenceSession(str(q_path), providers=["CPUExecutionProvider"])
         q_policy = q_session.run(None, {q_session.get_inputs()[0].name: inp_np})[0]
 
-        # Relative difference should be within 10 % of the original magnitude
-        rel_diff = np.abs(orig_policy - q_policy) / (np.abs(orig_policy) + 1e-8)
-        assert rel_diff.mean() < 0.10, (
-            f"Quantized policy mean relative error {rel_diff.mean():.4f} exceeds 10 %"
+        scale = float(np.abs(orig_policy).mean())
+        assert scale > 0.0, "the original policy is all zeros; the bound below would be vacuous"
+        rel_err = float(np.abs(orig_policy - q_policy).mean()) / scale
+        assert rel_err < QUANTIZED_POLICY_REL_TOL, (
+            f"Quantized policy error {rel_err:.4f} of the logits' mean magnitude exceeds "
+            f"{QUANTIZED_POLICY_REL_TOL:.0%}"
         )
 
     def test_int8_quantization_config_validates(self) -> None:

@@ -45,8 +45,9 @@ Planted defects (harden-a-guard), 4/4 killed, each by the named test(s):
    [2]`` and ``[4]``; since B50 also ``TestNoDeprecatedDynamicAxesRoute::
    test_dataclass_model_matches_pytorch_at_every_batch[2]`` and ``[4]``.
 
-B50, 3 of its 9 planted defects killed here (the rest in
-``test_export_adapters.py``'s docstring, which numbers them 13-20):
+B50 planted defects killed here: three of the first round's nine (items 5-7)
+and one of the review round's (item 8). The rest are numbered 13-26 in
+``test_export_adapters.py``'s docstring:
 
 5. ``dynamic_axes`` passed again instead of ``dynamic_shapes`` (the pre-fix
    call): ``TestNoDeprecatedDynamicAxesRoute::test_tensor_export_takes_no
@@ -55,8 +56,14 @@ B50, 3 of its 9 planted defects killed here (the rest in
 6. Every input passed as static: ``TestNoDeprecatedDynamicAxesRoute::test
    _dataclass_model_matches_pytorch_at_every_batch[1]`` and ``[4]``.
 7. A warning marker reworded, as a torch release might: ``TestNoDeprecated
-   DynamicAxesRoute::test_premise_torch_flags_dynamic_axes_with_both
-   _messages``.
+   DynamicAxesRoute::test_premise_torch_flags_dynamic_axes_with_our
+   _markers`` (version-aware since the review: one marker must fire and
+   every ``dynamic_axes`` warning must be matched, so torch 2.8's single
+   warning passes and a rewording still fails).
+8. A multi-input spec left flat for ``TupleOutputWrapper``: the
+   ``two_input_heads_export`` fixture fails to export, so every
+   ``TestMultiInputDataclassExport::test_matches_pytorch_at_every_batch``
+   case errors (the torch-only dispatch test names the kill).
 
 These killers skip without the ONNX stack; CI runs them where it is installed.
 """
@@ -76,10 +83,7 @@ from src.deployment.config import ExportConfig, QuantizationConfig, Quantization
 from src.deployment.export_onnx import ONNXExporter
 from src.deployment.quantize import ModelQuantizer
 from src.modeling.model import ModelOutput
-from tests.support.onnx_export import (
-    DEPRECATED_DYNAMIC_AXES_MESSAGES,
-    deprecated_dynamic_axes_warnings,
-)
+from tests.support.onnx_export import deprecated_dynamic_axes_warnings
 
 pytestmark = pytest.mark.onnx_required
 
@@ -241,6 +245,13 @@ class TestSizeOneDynamicAxis:
         np.testing.assert_allclose(_run(ort, path, x), expected, atol=FP32_ABS_TOL)
 
 
+class _TwoInputGridHeads(_GridHeads):
+    """``_GridHeads`` with a second input: ``TupleOutputWrapper`` binds it as ``*args``."""
+
+    def forward(self, x: Tensor, offset: Tensor) -> ModelOutput:  # type: ignore[override]
+        return super().forward(x + offset)
+
+
 def _export_heads(model: nn.Module, sample: Tensor, path: Path) -> Path:
     """Export a ``ModelOutput`` model the way the default ``ExportConfig`` exports one."""
     config = ExportConfig(
@@ -271,8 +282,14 @@ def heads_export(
 class TestNoDeprecatedDynamicAxesRoute:
     """The exporter passes ``dynamic_shapes``, never torch's deprecated ``dynamic_axes`` route."""
 
-    def test_premise_torch_flags_dynamic_axes_with_both_messages(self, tmp_path: Path) -> None:
-        """Without this, a reworded torch warning would leave the tests below passing vacuously."""
+    def test_premise_torch_flags_dynamic_axes_with_our_markers(self, tmp_path: Path) -> None:
+        """Without this, a reworded torch warning would leave the tests below passing vacuously.
+
+        Version-aware: torch 2.14 emits both markers, torch 2.8's conversion
+        only the ``UserWarning``. What must hold everywhere is that one marker
+        fires and that every warning torch raises about ``dynamic_axes`` is
+        matched by a marker, so a rewording fails here on any release.
+        """
         _onnxruntime()
         torch.manual_seed(0)
         with warnings.catch_warnings(record=True) as caught:
@@ -287,11 +304,18 @@ class TestNoDeprecatedDynamicAxesRoute:
                 dynamo=True,
             )
         flagged = deprecated_dynamic_axes_warnings(caught)
-        assert len(flagged) == len(DEPRECATED_DYNAMIC_AXES_MESSAGES), (
-            "torch no longer emits one warning per DEPRECATED_DYNAMIC_AXES_MESSAGES entry "
-            f"when given dynamic_axes (got {flagged}). If it reworded them, update the "
-            "markers; if it removed the conversion, this premise and its guards can go."
+        about_axes = [
+            f"{w.category.__name__}: {w.message}"
+            for w in caught
+            if "dynamic_axes" in str(w.message)
+        ]
+        assert flagged, (
+            "torch emitted none of DEPRECATED_DYNAMIC_AXES_MESSAGES when given dynamic_axes. "
+            "If it reworded them, update the markers; if it removed the conversion, this "
+            "premise and its guards can go."
         )
+        unmatched = sorted(set(about_axes) - set(flagged))
+        assert not unmatched, f"torch warns about dynamic_axes unmatched by a marker: {unmatched}"
 
     def test_tensor_export_takes_no_deprecated_route(self, tmp_path: Path) -> None:
         _onnxruntime()
@@ -321,5 +345,51 @@ class TestNoDeprecatedDynamicAxesRoute:
         policy, value = session.run([POLICY_NAME, VALUE_NAME], {INPUT_NAME: x.numpy()})
         with torch.no_grad():
             expected = model(x)
+        np.testing.assert_allclose(policy, expected.policy_logits.numpy(), atol=FP32_ABS_TOL)
+        np.testing.assert_allclose(value, expected.value.numpy(), atol=FP32_ABS_TOL)
+
+
+OFFSET_NAME = "offset"
+
+
+@pytest.fixture(scope="module")
+def two_input_heads_export(tmp_path_factory: pytest.TempPathFactory) -> tuple[nn.Module, Path]:
+    """``_TwoInputGridHeads`` exported once from batch-1 samples, batch dynamic on every tensor."""
+    _onnxruntime()
+    torch.manual_seed(0)
+    model = _TwoInputGridHeads().eval()
+    samples = tuple(torch.randn(SIZE_ONE_SAMPLE_BATCH, ROWS, FEATURES) for _ in range(2))
+    names = (INPUT_NAME, OFFSET_NAME, POLICY_NAME, VALUE_NAME)
+    config = ExportConfig(
+        input_names=[INPUT_NAME, OFFSET_NAME],
+        output_names=[POLICY_NAME, VALUE_NAME],
+        dynamic_axes={name: {0: "batch"} for name in names},
+        optimization_level="none",
+    )
+    path = tmp_path_factory.mktemp("two_input_heads") / "model.onnx"
+    return model, ONNXExporter(config).export(model, samples, path)
+
+
+class TestMultiInputDataclassExport:
+    """A dataclass-returning model with two inputs exports with both batches dynamic (B50).
+
+    ``TupleOutputWrapper.forward(x, *args)`` binds the inputs as ``(x, (offset,))``; a
+    flat ``dynamic_shapes`` tuple failed ``torch.export`` for two and three inputs.
+    """
+
+    @pytest.mark.parametrize("batch", RUNTIME_BATCHES)
+    def test_matches_pytorch_at_every_batch(
+        self, batch: int, two_input_heads_export: tuple[nn.Module, Path]
+    ) -> None:
+        ort = _onnxruntime()
+        model, path = two_input_heads_export
+        torch.manual_seed(batch)
+        x, offset = (torch.randn(batch, ROWS, FEATURES) for _ in range(2))
+
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        feeds = {INPUT_NAME: x.numpy(), OFFSET_NAME: offset.numpy()}
+        policy, value = session.run([POLICY_NAME, VALUE_NAME], feeds)
+        with torch.no_grad():
+            expected = model(x, offset)
         np.testing.assert_allclose(policy, expected.policy_logits.numpy(), atol=FP32_ABS_TOL)
         np.testing.assert_allclose(value, expected.value.numpy(), atol=FP32_ABS_TOL)

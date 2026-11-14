@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Two skills, a mutation runner, and two preflight steps for the harness** (from the B50 branch).
+  `close-hygiene-row` writes down the backlog row format this repo had kept only by example: the next
+  free B-number, a DONE row that keeps its original finding, dated notes on rows a change touches, and
+  where each count was measured. `retire-a-deprecation` is the procedure B50 needed: find what
+  swallows the warning, add a version-aware premise test, check the replacement from the dependency's
+  floor to CI's pin (B50's first version skipped this and broke torch 2.6), and never silence it.
+  `harden-a-guard` gains a runner, `python -m scripts.plant_mutations` (tested by
+  `tests/scripts/test_plant_mutations.py`). It plants each defect in a spec and runs the selection unmutated
+  first, so an already-red test is not counted. It reports `KILLED` only for a named `FAILED` test,
+  refuses a missing or ambiguous anchor, and times out a hung run. It journals the original before
+  mutating, so a killed run is restored next time, and prints each kill's failure `reason`. It is
+  tested deterministically through an injected runner (30 tests, 11/11 planted defects killed). A
+  mutation may set `expect`, a regex its failure reason must match; a kill for any other reason is
+  `WRONG-REASON`. Recovery restores a file only if it still holds the journalled mutation, never over
+  work done since. Its
+  journal lives in the repository (`.plant-journal.json`, gitignored) and every path it or a spec
+  names must resolve inside the repository, after a security review found that a journal planted in
+  the shared temp directory could become an arbitrary file write.
+  `pr-preflight` gains proving a failure predates you on a clean worktree of the base, and checking
+  the `hf_space/` mirrors. The agents that require mutation testing (`sqe`, `reviewer`,
+  `build-engineer`) now point at the runner and at reading each kill's reason.
+- **Two CI-wiring guards and a Makefile mirror for the ONNX step** (hygiene B54).
+  `tests/docs/test_ruff_scope_parity.py` enforces what a `ci.yml` comment only stated: CI's ruff
+  `check` and `format` paths agree with each other and with `make lint`, and every tracked `*.py`
+  outside pre-commit's `exclude:` is inside CI's scope. `make test-onnx` mirrors CI's blocking ONNX
+  step, and `tests/docs/test_onnx_step_mirror.py` keeps the two selecting the same suites, the
+  import check ahead of pytest, and the step blocking; the Makefile half is driven with recording
+  stubs rather than read. 14/14 planted defects killed, five of them added after a final review
+  showed the first versions passing on `|| true`, `echo pytest`, `--ignore` and a one-directional
+  scope check. Each ONNX export
+  now logs its axes route (`export_axes_route`), decided by the pure `select_axes_route`.
 - **`docs/business/COMMERCIALIZATION_PEER_REVIEW.md`** (revision 2) — adjudicates a
   three-model commercialization meta-analysis against the tree, re-measuring every
   empirical premise. Central finding: the committed MCTS trajectory in
@@ -795,19 +826,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are recorded as B47-B49, among them that the legacy `dynamo=False` exporter -- the fix the old
   comment proposed -- produces outputs off by about 0.1.
 - **ONNX export no longer takes torch's deprecated `dynamic_axes` route** (hygiene B50). On torch
-  >= 2.9 `torch.onnx.export` runs the dynamo exporter, which converted the `dynamic_axes` the
-  exporter passed through `from_dynamic_axes_to_dynamic_shapes`, a function deprecated for removal.
-  Every export in CI's ONNX step warned about it, and the removal would have turned that blocking
-  step red on a torch upgrade. `ONNXExporter` now derives `dynamic_shapes` from the unchanged
-  `ExportConfig.dynamic_axes` (new `dynamic_shapes_from_axes` in `src/deployment/export_adapters.py`:
-  one spec per input by position, output axes left to torch, an entry naming neither an input nor an
-  output rejected with a `ValueError` that names it) and passes it with `dynamo=True` explicit, so
-  torch 2.6-2.8 no longer falls back to the legacy exporter that mis-exports the model (B48). The
-  exported graph declares the same named axes. Neither warning is silenced: three new tests fail if
-  either is emitted (each failed on the old code), and a premise test fails if torch rewords them.
-  New parity checks run away from the traced shape (the real model at batch 3 and on a 13x13 board).
-  The size-1 axis enlargement is still needed and stays. 9/9 planted defects killed; the ONNX step
-  runs 51 tests (41 before). `export_method="script"` still passes `dynamic_axes` (B47).
+  2.9+, `torch.onnx.export` runs the dynamo exporter, which converted the `dynamic_axes` the exporter
+  passed through `from_dynamic_axes_to_dynamic_shapes`, a function deprecated for removal. Every
+  export in CI's blocking ONNX step warned, so the removal would have turned the step red on a torch
+  upgrade. Where torch defaults to dynamo (read once from `torch.onnx.export`'s signature,
+  `ONNX_EXPORT_DEFAULTS_TO_DYNAMO`), `ONNXExporter` now passes `dynamic_shapes` derived from the
+  unchanged `ExportConfig.dynamic_axes` (`dynamic_shapes_from_axes`: one spec per input by position,
+  negative axes counted from the end, output axes left to torch, an entry naming no input or output
+  rejected with a `ValueError` naming it). Before 2.9 the original call goes out unchanged: the first
+  version of this fix sent `dynamic_shapes` everywhere and would have broken torch 2.6, the declared
+  floor, which rejects named axes there. A caller's own `dynamic_shapes` or `dynamic_axes` now passes
+  through alone instead of raising a duplicate-keyword `TypeError`, a caller's `dynamo=False` picks the
+  legacy exporter, and a caller's `dynamo=True` below torch 2.9 keeps the historical call; a dataclass-returning
+  model with two or more inputs exports, its axes nested the way `TupleOutputWrapper` binds them.
+  Neither warning is silenced: the no-warning tests failed on the old code, and a version-aware
+  premise fails if torch rewords them. The real model's graph is checked for its axis names and
+  against PyTorch away from the traced shape. 16/16 planted defects killed (2 more for B52); the ONNX step runs 56
+  tests (41 before). Untested: torch below 2.9, which no CI job installs (B53).
+- **The quantization accuracy test no longer turns red on a near-zero logit** (hygiene B52). It
+  divided each logit's error by that logit, so the score ranged 0.005-0.073 by model seed alone and
+  reached 0.18 on one CI run with versions identical to a passing run. It now measures error
+  against the logits' mean magnitude (0.005-0.035 across seeds and quantizer settings) with the same
+  10 % bound, and a quantized model whose int8 weights are doubled still fails it on the assertion. `_make_model` seeds
+  its own weights, so module-scoped fixtures no longer depend on test order.
 - **The `fem_required` guard reviews every conftest hook, and reads the annotations that run at
   import** (fourth Copilot review of PR #160). Two more gaps, each reproduced with real pytest and
   passing the guard at `5cc1af8`: a conftest `pytest_collection_finish` that emptied

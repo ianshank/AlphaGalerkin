@@ -22,7 +22,9 @@ Checklist for every diff:
   existence of the file is not provenance.
 - **Guards that cannot fail**: a new guard must be mutation-tested — restore the defect, confirm
   a *named* test fails, and confirm the mutation actually applied. A guard whose scan roots or
-  vocabulary match nothing passes everything.
+  vocabulary match nothing passes everything. Read each recorded kill's *reason*: a test that
+  failed because a dependency raised did not catch the defect (`python -m scripts.plant_mutations`
+  prints it).
 - **Coverage / regression**: the changed surface hits its `--cov-fail-under` gate (branch); the
   correct CLAUDE.md Regression-Surface rows are run and green; new surfaces add a new row.
 - **Every `@abstractmethod` has a call site.** An abstract method overridden by every subclass but

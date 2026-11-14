@@ -1,4 +1,4 @@
-"""The warnings torch emits when an ONNX export takes its deprecated ``dynamic_axes`` route.
+"""ONNX-export test support: torch's deprecated-route warnings and the default axis spec.
 
 On torch >= 2.9 ``torch.onnx.export`` runs the dynamo exporter, which converts a
 ``dynamic_axes`` argument to ``dynamic_shapes`` through
@@ -25,6 +25,12 @@ DEPRECATED_DYNAMIC_AXES_MESSAGES: Final[tuple[str, ...]] = (
 )
 
 
+#: The ``dynamic_shapes`` spec the default ``ExportConfig``'s axes give its one input.
+#: Written out, not derived, so a test pinning the exporter's call cannot agree with a
+#: broken derivation by calling it.
+DEFAULT_BOARD_SHAPES: Final[dict[int, str]] = {0: "batch", 2: "height", 3: "width"}
+
+
 def deprecated_dynamic_axes_warnings(caught: Iterable[WarningMessage]) -> list[str]:
     """Return each caught warning that marks the deprecated route, as ``Category: message``."""
     return [
@@ -34,4 +40,8 @@ def deprecated_dynamic_axes_warnings(caught: Iterable[WarningMessage]) -> list[s
     ]
 
 
-__all__ = ["DEPRECATED_DYNAMIC_AXES_MESSAGES", "deprecated_dynamic_axes_warnings"]
+__all__ = [
+    "DEFAULT_BOARD_SHAPES",
+    "DEPRECATED_DYNAMIC_AXES_MESSAGES",
+    "deprecated_dynamic_axes_warnings",
+]

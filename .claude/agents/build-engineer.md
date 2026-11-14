@@ -74,8 +74,8 @@ protection?* Then make that edit and confirm a **named** test goes red.
 2. Prefer *driving* a mechanism over asserting its spelling. `make <t>
    PYTEST=<stub>` costs 50 ms and catches rewrites a grep cannot.
 3. Every wiring change gets a guard, and every guard gets mutation-killed per
-   `.claude/skills/harden-a-guard/SKILL.md`. State `N/N mutation-killed` naming
-   each mutation.
+   `.claude/skills/harden-a-guard/SKILL.md`, mechanised by `python -m
+   scripts.plant_mutations`. State `N/N mutation-killed` naming each mutation.
 4. Keep the four mirrors in step in the same change, and copy command strings
    **verbatim** — paraphrase is how a Regression Surface row came to prescribe an
    invocation measured to exhaust the runner's memory.

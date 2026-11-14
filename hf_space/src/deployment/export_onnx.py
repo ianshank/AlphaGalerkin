@@ -15,9 +15,11 @@ Features:
 
 from __future__ import annotations
 
+import inspect
 import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import structlog
 import torch
@@ -25,10 +27,13 @@ from torch import Tensor, nn
 
 from src.deployment.config import ExportConfig
 from src.deployment.export_adapters import (
+    AXES_ROUTE_CALLER,
+    AXES_ROUTE_DYNAMIC_AXES,
     TupleOutputWrapper,
     dynamic_shapes_from_axes,
     enlarge_size_one_dynamic_axes,
     is_structured_output,
+    select_axes_route,
     structured_output_fields,
 )
 
@@ -36,6 +41,20 @@ if TYPE_CHECKING:
     from src.modeling.model import AlphaGalerkinModel
 
 logger = structlog.get_logger(__name__)
+
+
+def _defaults_to_dynamo(export: Callable[..., Any]) -> bool:
+    """True when ``export``'s ``dynamo`` parameter defaults to True (torch 2.9+)."""
+    parameter = inspect.signature(export).parameters.get("dynamo")
+    return parameter is not None and parameter.default is True
+
+
+#: Whether this torch's ``torch.onnx.export`` runs the dynamo exporter by default
+#: (torch 2.9+). Only there does a ``dynamic_axes`` argument reach torch's deprecated
+#: conversion to ``dynamic_shapes`` (hygiene B50), so only there does the exporter pass
+#: ``dynamic_shapes`` instead. Read once from the real function at import, before any
+#: test replaces it.
+ONNX_EXPORT_DEFAULTS_TO_DYNAMO: Final[bool] = _defaults_to_dynamo(torch.onnx.export)
 
 
 class ONNXExporter:
@@ -177,13 +196,14 @@ class ONNXExporter:
         output_path: Path,
         **kwargs: Any,
     ) -> None:
-        """Export with ``torch.onnx.export``'s dynamo exporter, which traces via torch.export.
+        """Export with ``torch.onnx.export``'s default exporter.
 
-        ``ExportConfig.dynamic_axes`` reaches it as ``dynamic_shapes``: given
-        ``dynamic_axes``, it converts them through a function deprecated for
-        removal. ``dynamo=True`` is explicit because torch before 2.9 defaults
-        to the legacy exporter, which rejects ``dynamic_shapes`` and mis-exports
-        ``AlphaGalerkinModel`` (hygiene B48).
+        On torch 2.9+ that is the dynamo exporter, and ``ExportConfig.dynamic_axes``
+        reaches it as ``dynamic_shapes``: handed ``dynamic_axes``, it converts them
+        through a function deprecated for removal (hygiene B50). Before 2.9 the
+        default is the legacy exporter, which takes ``dynamic_axes`` itself, so the
+        call is the historical one; torch 2.6 could not read the axis names
+        ``dynamic_shapes`` would carry anyway.
 
         Args:
             model: Model to export.
@@ -192,12 +212,6 @@ class ONNXExporter:
             **kwargs: Additional arguments.
 
         """
-        dynamic_shapes = dynamic_shapes_from_axes(
-            self.config.input_names,
-            self.config.output_names,
-            self.config.dynamic_axes,
-            len(input_tensors),
-        )
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
@@ -207,14 +221,38 @@ class ONNXExporter:
                 str(output_path),
                 input_names=self.config.input_names,
                 output_names=self.config.output_names,
-                dynamic_shapes=dynamic_shapes,
-                dynamo=True,
+                **self._axes_arguments(model, input_tensors, kwargs),
                 opset_version=self.config.opset_version,
                 do_constant_folding=self.config.do_constant_folding,
                 export_params=self.config.export_params,
                 verbose=self.config.verbose,
                 **kwargs,
             )
+
+    def _axes_arguments(
+        self,
+        model: nn.Module,
+        input_tensors: tuple[Tensor, ...],
+        overrides: dict[str, Any],
+    ) -> dict[str, Any]:
+        """The axes arguments for ``torch.onnx.export``, by :func:`select_axes_route`."""
+        route = select_axes_route(overrides, ONNX_EXPORT_DEFAULTS_TO_DYNAMO)
+        self._logger.info(
+            "export_axes_route", route=route, defaults_to_dynamo=ONNX_EXPORT_DEFAULTS_TO_DYNAMO
+        )
+        if route == AXES_ROUTE_CALLER:
+            return {}
+        if route == AXES_ROUTE_DYNAMIC_AXES:
+            return {"dynamic_axes": self.config.dynamic_axes}
+        shapes: tuple[Any, ...] = dynamic_shapes_from_axes(
+            self.config.input_names,
+            self.config.output_names,
+            self.config.dynamic_axes,
+            [tensor.ndim for tensor in input_tensors],
+        )
+        if isinstance(model, TupleOutputWrapper):
+            shapes = TupleOutputWrapper.dynamic_shapes_for(shapes)
+        return {"dynamic_shapes": shapes} | ({} if "dynamo" in overrides else {"dynamo": True})
 
     def _export_script(
         self,

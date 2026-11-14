@@ -277,6 +277,8 @@ graph TB
 | fast lane → hermetic flags | a test that reaches the network passes on runner egress and fails everywhere else (B35: two "unit" tests fetched 500 MB of VGG weights) | `test_fast_lane_is_hermetic.py` keeps the three flag copies equal and *drives* a planted outbound connect to prove they block (R-02) |
 | job → `make pre-pr` | the developer mirror is narrower than CI (`make test-e2e` once ran **3 of 81** tests) | clause (d) + the `pre-pr` parametrize list |
 | CI command → `CLAUDE.md` row | the documented command diverges from the enforced one | clause (i) |
+| CI ruff scope → pre-commit `exclude:` | a tracked `*.py` the commit hook lints but CI never does, or the reverse (a mutation runner first written under `.claude/` would have been one) | `test_ruff_scope_parity.py` (B54 (d)) |
+| ONNX step → `make test-onnx` | the blocking ONNX step loses its import check (every test skips) or goes `continue-on-error` again (B45), or the local mirror certifies a different selection | `test_onnx_step_mirror.py` (B54 (c)) |
 
 ### The one workaround in this picture
 
@@ -1821,6 +1823,10 @@ C4Component
 
         Component(g_shape, "test_shape_baseline + scripts/measure_shape", "R-11", "Nine code-shape metrics ratcheted against config/shape_baseline.yaml; regenerate with measure_shape write after a genuine reduction")
 
+        Component(g_ruff, "test_ruff_scope_parity", "B54", "CI ruff check/format paths equal each other and the Makefile lint target; every tracked *.py outside pre-commit's exclude is in CI's scope")
+
+        Component(g_onnx, "test_onnx_step_mirror", "B45/B54", "The ONNX step blocks, checks the ONNX stack before pytest, and selects what make test-onnx selects")
+
         Component(g_eval, "test_eval_harness_gating", "R-13", "eval_harness_required marker on every file; conftest gate driven through both branches; the test-extras step selects and measures the suite")
 
         Component(g_changelog, "test_changelog_headers", "R-08", "One preamble, one Unreleased block, canonical groups, PEP 440 ladder")
@@ -1874,6 +1880,9 @@ why `tests/claude/` machine-checks the inventory.
 | Eval-harness gating (R-13) | `eval_harness_required` marker; `test-extras` step with an inline coveragerc; `tests/docs/test_eval_harness_gating.py` | A suite collapsing to zero items under `importorskip` so no hook, `-m` or gate can see it (B37 — the eighth invisibility instance) |
 | CHANGELOG structure (R-08) | `tests/docs/test_changelog_headers.py` | Two `[Unreleased]` blocks or a duplicated `### Added` after a merge, so a release cut renames one of two changelogs |
 | Worktree rule (R-14) | `AGENT.md` + every Bash-granted `.claude/agents/*.md`; `tests/claude/test_worktree_rule.py` | A concurrent subagent's `git stash` / `git reset` reaching another agent's uncommitted edits in a shared tree (B22) |
+| Ruff scope parity (B54) | `tests/docs/test_ruff_scope_parity.py` | A tracked `*.py` linted by the commit hook but invisible to CI's ruff steps, or CI's `check`/`format`/Makefile scopes drifting apart |
+| ONNX step mirror (B45, B54) | `tests/docs/test_onnx_step_mirror.py`; `make test-onnx` | The ONNX export gate passing on skips (no import check), going `continue-on-error`, or its local mirror selecting different suites |
+| Mutation runner (harden-a-guard) | `python -m scripts.plant_mutations`; `tests/scripts/test_plant_mutations.py` | A guard recorded as mutation-killed when the kill was an already-red test, an import error, or a dependency raising instead of the assertion firing |
 | `make pre-pr` | local | Local/CI drift. Kept in step by hand; the duplication is tracked as backlog B7 |
 
 **Deliberately not gated**, with reasons rather than numbers: `src/integrations`
@@ -1887,7 +1896,7 @@ gated on 2026-09-02 (B31) at 54 / 85 / 25 respectively — `src/backend` was in
 the global `omit` *and* ungated, so its 213 passing tests measured nothing
 anywhere. `src/deployment`'s 25 is a regression tripwire, not a standard: 626
 statements with 416 missed is the largest genuinely under-tested surface in
-`src/`, and raising it is test work, not a number to edit in CI.
+`src/`, and raising it is test work, not a number to edit in CI. **Re-measured 2026-10-16** after B45/B50/B52: 52% branch in CI's form (no ONNX stack), 61% with it; the gate stays 25 under the triage-before-gating rule (`add-coverage-gate` Step 2: below 75, triage first).
 
 ## References
 

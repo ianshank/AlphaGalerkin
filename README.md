@@ -267,6 +267,7 @@ pytest -m "not gpu_required"          # CPU-only default surface, unsandboxed
 ruff check src/ && ruff format --check src/
 
 make pre-pr                            # the developer mirror of CI
+make test-onnx                         # CI's blocking ONNX export step (needs the ONNX stack)
 ```
 
 **Enforcement is itself tested.** The recurring defect in this repository has not
@@ -293,7 +294,9 @@ C4 view linked above.
 
 Every guard in those suites is **mutation-tested**: the defect it claims to catch
 is planted, a *named* test must go red, and the kill is recorded. The procedure is
-`.claude/skills/harden-a-guard/SKILL.md`.
+`.claude/skills/harden-a-guard/SKILL.md`; `python -m scripts.plant_mutations` runs it for
+a whole spec of defects, subtracting the unmutated baseline and printing why each test
+failed, so a dependency raising is not mistaken for the guard catching the defect.
 
 **End-to-end journeys run the shipped entry points as processes** — the exit code
 a shell sees, the argument parser, import-time side effects and the on-disk

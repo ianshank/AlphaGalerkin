@@ -37,6 +37,12 @@ written to catch a specific defect: restore the defect and confirm a *named* tes
 confirm the mutation actually applied — one lost to shell quoting produces a false negative that
 looks exactly like a passing guard. Assert the file changed.
 
+For several defects at once use `python -m scripts.plant_mutations` (spec format in
+`.claude/skills/harden-a-guard/SKILL.md`): it refuses an anchor that is missing or
+ambiguous, subtracts the unmutated baseline, and prints each kill's `reason`. Read the
+reason: a test that failed because a dependency raised is not the guard's assertion
+firing (B52's first two plants made onnxruntime refuse the model).
+
 Watch for the two ways a guard silently does nothing: it scans an empty set (a scanner matching
 no files passes everything — add a meta-test that it reaches real subjects), or its vocabulary
 misses the real spelling (one here matched `dorfler` while the source writes `Dörfler`).
